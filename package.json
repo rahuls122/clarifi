@@ -7,13 +7,20 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
+    "concurrently": "^10.0.3",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "yahoo-finance2": "^3.15.2"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "concurrently -k -n api,web -c blue,green \"npm run server\" \"wait-on -t 30000 http-get://127.0.0.1:5000/api/stock/AAPL && npm run client\"",
+    "client": "react-scripts start",
+    "server": "node server.js",
+    "start:alt": "concurrently -k -n api,web \"PORT=5001 npm run server\" \"wait-on -t 30000 http-get://127.0.0.1:5001/api/stock/AAPL && PORT=3002 REACT_APP_API_BASE=http://localhost:5001 npm run client\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -35,5 +42,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "wait-on": "^9.0.10"
   }
 }
