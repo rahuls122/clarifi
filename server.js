@@ -7,13 +7,24 @@ const app = express();
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 const PORT = process.env.PORT || 3002;
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
-
-async function fetchJson(url) {
-  const response = await fetch(url);
-  return response.json();
-}
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
 app.use(cors());
+
+async function callGemini(prompt) {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    }
+  );
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
 // Stock quote endpoint
 app.get('/api/stock/:ticker', async (req, res) => {
@@ -62,7 +73,6 @@ app.get('/api/news/:ticker', async (req, res) => {
       return res.json([]);
     }
 
-    // Return top 10 most recent articles
     const articles = data.slice(0, 10).map((item) => ({
       headline: item.headline,
       source: item.source,
@@ -78,57 +88,76 @@ app.get('/api/news/:ticker', async (req, res) => {
   }
 });
 
-// AI Summary endpoint using Gemini
+// AI Summary endpoint
 app.get('/api/summary/:ticker', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-
   try {
     const quote = await yahooFinance.quote(ticker);
 
     const prompt = `You are a financial analyst. Given the following stock data, write exactly 3 concise bullet points of investment analysis for ${ticker}. Be specific, use the numbers provided, and keep each bullet under 30 words.
 
-Stock: ${quote.companyName} (${ticker})
+Stock: ${quote.longName || ticker} (${ticker})
 Price: $${quote.regularMarketPrice ?? 'N/A'}
 Change: ${quote.regularMarketChangePercent?.toFixed(2) ?? 'N/A'}%
-Previous Close: $${quote.regularMarketPreviousClose ?? 'N/A'}
-Volume: ${quote.regularMarketVolume ?? 'N/A'}
 52-Week High: $${quote.fiftyTwoWeekHigh ?? 'N/A'}
 52-Week Low: $${quote.fiftyTwoWeekLow ?? 'N/A'}
 Market Cap: $${quote.marketCap ?? 'N/A'}
 
-Return ONLY the 3 bullet points, no intro text, no labels. Start each with a •`;
+Return ONLY 3 bullet points, no intro. Start each with •`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      }
-    );
-
-    const data = await response.json();
-    console.log('Gemini raw response:', JSON.stringify(data, null, 2));
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('Extracted text:', text);
+    const text = await callGemini(prompt);
     const bullets = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => line.replace(/^[•\-\*]\s*/, '').trim())
-    .filter((line) => line.length > 10)
-    .slice(0, 3);
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => line.replace(/^[•\-\*]\s*/, '').trim())
+      .filter((line) => line.length > 10)
+      .slice(0, 3);
 
     res.json({ bullets });
   } catch (error) {
-    console.error('Gemini error:', error.message);
-    res.status(500).json({ message: 'Failed to generate AI summary.' });
+    console.error('Gemini summary error:', error.message);
+    res.status(500).json({ message: 'Failed to generate summary.' });
   }
 });
 
+// Investment Memo endpoint
+app.get('/api/memo/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const quote = await yahooFinance.quote(ticker);
+
+    const prompt = `You are a professional investment analyst. Write a concise investment memo for ${quote.longName || ticker} (${ticker}).
+
+Stock Data:
+Price: $${quote.regularMarketPrice ?? 'N/A'}
+Change Today: ${quote.regularMarketChangePercent?.toFixed(2) ?? 'N/A'}%
+52-Week High: $${quote.fiftyTwoWeekHigh ?? 'N/A'}
+52-Week Low: $${quote.fiftyTwoWeekLow ?? 'N/A'}
+Market Cap: $${quote.marketCap ?? 'N/A'}
+Volume: ${quote.regularMarketVolume ?? 'N/A'}
+
+Write the memo in exactly this format, keep each section to 2-3 sentences max:
+
+COMPANY SNAPSHOT
+[What the company does and its market position]
+
+BULL CASE
+[3 reasons to be optimistic, use bullet points]
+
+BEAR CASE  
+[3 key risks, use bullet points]
+
+ANALYST VERDICT
+[One clear paragraph verdict on the stock]`;
+
+    const text = await callGemini(prompt);
+    res.json({ memo: text });
+  } catch (error) {
+    console.error('Gemini memo error:', error.message);
+    res.status(500).json({ message: 'Failed to generate memo.' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Clarifi API running on http://localhost:${PORT}`);
