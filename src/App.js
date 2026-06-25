@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const NAVY = '#0a0f2c';
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3002';
+const API_BASE = process.env.REACT_APP_API_BASE || '';
 const TICKER_SYMBOLS = ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN', 'GOOGL', 'META', 'NFLX', 'AMD', 'JPM'];
 const CHART_HEIGHT = 280;
 const WATCHLIST_KEY = 'clarifi_watchlist';
